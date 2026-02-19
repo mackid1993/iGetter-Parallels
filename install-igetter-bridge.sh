@@ -7,7 +7,7 @@ echo ""
 # --- Config ---
 MAC_USER="$USER"
 MAC_HOME="$HOME"
-WIN_USER="david"
+WIN_USER="USER_NAME_GOES_HERE"
 VM_NAME="$(prlctl list -o name --no-header | head -1 | xargs)"
 VM_HOST="$(prlctl exec "$VM_NAME" hostname 2>/dev/null | tr -d '\r').local"
 RELAY_PORT=19700
