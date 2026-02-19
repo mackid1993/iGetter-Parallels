@@ -1,3 +1,49 @@
+# iGetter Native Messaging Bridge
+
+Routes Chrome extension download intercepts from a macOS browser to iGetter running inside a Parallels Windows VM.
+
+```
+Browser (macOS) → Native Messaging → Python bridge → TCP:19700 → C# relay (Windows) → iGetter
+```
+
+## How It Works
+
+The Chrome extension sends downloads to a native messaging host. Since iGetter runs in Windows, a Python bridge on macOS connects over TCP to a C# relay inside the VM. The relay spawns `iGetter_x86.exe` and pipes the message through. Download paths are rewritten from `/Users/you/...` to `\\Mac\Home\...` so iGetter saves files to the Mac filesystem via Parallels shared folders.
+
+If the VM is paused, suspended, or stopped, the bridge automatically starts it and waits for iGetter to be ready before forwarding the download.
+
+## Prerequisites
+
+- macOS with Parallels Desktop
+- Windows VM with iGetter installed (`%LOCALAPPDATA%\Programs\iGetter\`)
+- iGetter Chrome extension installed in your browser
+- .NET Framework 4.0+ in the VM (included with Windows)
+- Python 3 on macOS (included with macOS)
+
+## Install
+
+```bash
+chmod +x install-igetter-bridge.sh
+./install-igetter-bridge.sh
+```
+
+The installer auto-detects your VM name and hostname, then:
+
+1. Writes the Python bridge and shell wrapper to `~/`
+2. Installs native messaging manifests for Chrome, Vivaldi, Brave, Edge, and Chromium
+3. Compiles and installs the C# relay in the VM
+4. Copies the relay to the Windows Startup folder
+5. Adds a firewall rule for TCP 19700
+
+Restart your browser after installing.
+
+## Config
+
+Edit the top of `install-igetter-bridge.sh` before running:
+
+- `WIN_USER` — Windows username
+- `RELAY_PORT` — TCP port for the bridge (default: `19700`)
+
 # iGetter Native Messaging Bridge — Installed Files
 
 ## macOS
