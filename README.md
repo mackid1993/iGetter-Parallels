@@ -81,3 +81,5 @@ del "%LOCALAPPDATA%\igetter-relay.exe"
 del "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\igetter-relay.exe"
 netsh advfirewall firewall delete rule name="iGetter Relay"
 ```
+
+**This project is not affilaited with or supported by Presenta Ltd. iGetter is a trademark of Presenta Ltd.** Please purchase iGetter at https://igetter.net. It is an excellent piece of software.
