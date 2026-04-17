@@ -7,9 +7,8 @@ echo ""
 # --- Config ---
 MAC_USER="$USER"
 MAC_HOME="$HOME"
-WIN_USER="USER_NAME_GOES_HERE"
+WIN_USER="david"
 VM_NAME="$(prlctl list -o name --no-header | head -1 | xargs)"
-VM_HOST="$(prlctl exec "$VM_NAME" hostname 2>/dev/null | tr -d '\r').local"
 RELAY_PORT=19700
 
 if [ -z "$VM_NAME" ]; then
@@ -17,7 +16,6 @@ if [ -z "$VM_NAME" ]; then
     exit 1
 fi
 echo "VM: $VM_NAME"
-echo "VM host: $VM_HOST"
 echo ""
 
 # Helper: run command in Windows VM
@@ -32,10 +30,10 @@ cat > "$MAC_HOME/iGetter.py" << 'EOF'
 #!/usr/bin/env python3
 import os, socket, struct, json, subprocess, time
 
-VM_HOST = "PLACEHOLDER_HOST"
-VM_PORT = 19700
 VM_NAME = "PLACEHOLDER_VMNAME"
+VM_PORT = 19700
 PRLCTL = "/usr/local/bin/prlctl"
+MDNS_FALLBACK = f"{VM_NAME}.local"
 
 def _run(args):
     """Run a command with stdin/stdout/stderr isolated from Chrome's pipes."""
@@ -98,6 +96,19 @@ def wait_for_relay():
             pass
         time.sleep(2)
 
+def get_vm_host():
+    """Resolve VM IP at runtime via prlctl. Falls back to mDNS if unavailable."""
+    try:
+        out = _run([PRLCTL, "list", "-f", "-o", "ip", "--no-header", VM_NAME])
+        # Pick first non-empty, non-loopback IPv4 address.
+        # prlctl emits "-" when Tools isn't responsive and can list multiple IPs.
+        for ip in out.split():
+            if ip and ip != "-" and not ip.startswith("127.") and ":" not in ip:
+                return ip
+    except Exception:
+        pass
+    return MDNS_FALLBACK
+
 def rewrite_path(msg_bytes):
     try:
         length = struct.unpack('<I', msg_bytes[:4])[0]
@@ -121,10 +132,13 @@ def main():
     ensure_vm_running()
     wait_for_relay()
 
+    # Resolve VM host at runtime (avoids stale mDNS cache after IP changes)
+    vm_host = get_vm_host()
+
     # Send buffered message to relay
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((VM_HOST, VM_PORT))
+        sock.connect((vm_host, VM_PORT))
         sock.sendall(msg)
         sock.shutdown(socket.SHUT_WR)
         response = b''
@@ -150,8 +164,7 @@ EOF
 
 chmod +x "$MAC_HOME/iGetter.py" "$MAC_HOME/iGetter.sh"
 
-# Inject resolved hostname and VM name
-sed -i '' "s/PLACEHOLDER_HOST/$VM_HOST/" "$MAC_HOME/iGetter.py"
+# Inject VM name (IP is resolved at runtime, no hostname injection needed)
 sed -i '' "s/PLACEHOLDER_VMNAME/$VM_NAME/" "$MAC_HOME/iGetter.py"
 
 echo "  Created ~/iGetter.py and ~/iGetter.sh"
@@ -293,7 +306,7 @@ echo "[Windows] Copying relay to Startup folder..."
 winexec cmd /c "copy \"C:\\Users\\$WIN_USER\\AppData\\Local\\igetter-relay.exe\" \"C:\\Users\\$WIN_USER\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\igetter-relay.exe\" /Y"
 
 echo "[Windows] Adding firewall rule..."
-winexec powershell -Command "Remove-NetFirewallRule -DisplayName 'iGetter Relay' -ErrorAction SilentlyContinue; New-NetFirewallRule -DisplayName 'iGetter Relay' -Direction Inbound -LocalPort $RELAY_PORT -Protocol TCP -Action Allow | Out-Null"
+winexec powershell -Command "Remove-NetFirewallRule -DisplayName 'iGetter Relay' -ErrorAction SilentlyContinue; New-NetFirewallRule -DisplayName 'iGetter Relay' -Direction Inbound -LocalPort $RELAY_PORT -Protocol TCP -Action Allow -Profile Any | Out-Null"
 
 # --- Cleanup ---
 rm -rf "$STAGING"
@@ -306,6 +319,7 @@ echo "  - Restart your browser for the extension to detect the native host"
 echo "  - iGetter must be running in the VM for downloads to work"
 echo "  - The relay starts automatically on Windows login via Startup folder"
 echo "  - Downloads save to Mac filesystem via \\\\Mac\\Home"
+echo "  - VM IP is resolved at runtime via prlctl (survives DHCP/IP changes)"
 echo ""
 read -p "Reboot Windows VM now? [y/N] " answer < /dev/tty
 if [[ "$answer" =~ ^[Yy]$ ]]; then
